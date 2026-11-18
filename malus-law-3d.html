@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Malus’s Law 3D Simulation</title>
+<style>
+/* ===== THEME COLORS: edit these variables to recolor the page. --ac = cerulean blue, --am = neon rose ===== */
+:root{--bg:#0A0A0A;--card:#141414;--tx:#f2f2f2;--mut:#a3a3a3;--ac:#007BA7;--am:#FF2D95;--ln:#262626;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0A0A0A;--card:#141414;--tx:#f2f2f2;--mut:#a3a3a3;--ac:#007BA7;--am:#FF2D95;--ln:#262626}}
+:root[data-theme="dark"]{--bg:#0A0A0A;--card:#141414;--tx:#f2f2f2;--mut:#a3a3a3;--ac:#007BA7;--am:#FF2D95;--ln:#262626}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:Calibri,"Segoe UI",system-ui,sans-serif;padding:16px;max-width:900px;margin-inline:auto}
+h1{font-family:Georgia,serif;font-size:24px;margin:4px 0 2px;background:linear-gradient(90deg,#007BA7,#FF2D95);-webkit-background-clip:text;background-clip:text;color:transparent;width:fit-content}
+p.sub{color:var(--mut);margin:0 0 12px;font-size:14px}
+/* 3D scene box: the intensity meter sits inside it */
+#c{position:relative;width:100%;height:340px;border-radius:14px;overflow:hidden;background:#0A0A0A;touch-action:none;cursor:grab;box-shadow:0 0 0 1px #262626,0 0 40px rgba(255,45,149,.18)}
+#c canvas{display:block;width:100%;height:100%}
+/* Card = rounded panel for the controls, graph and explanation */
+.card{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:14px;margin-top:12px;box-shadow:0 0 28px rgba(0,123,167,.14)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+input[type=range]{flex:1;min-width:160px;accent-color:var(--ac)}
+button{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:9px 16px;font-weight:700;font-size:14px;cursor:pointer}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;text-align:center}
+.stats div{background:var(--bg);border-radius:10px;padding:8px}
+.stats b{display:block;font-size:20px;color:var(--am)}
+.stats span{font-size:12px;color:var(--mut)}
+/* Light theme: used when the toggle button sets data-theme="light" */
+:root[data-theme="light"]{--bg:#f2f4f6;--card:#ffffff;--tx:#0A0A0A;--mut:#555d66;--ac:#007BA7;--am:#d6137a;--ln:#d9dde2;color-scheme:light}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+button.ghost{background:transparent;color:var(--tx);border:1px solid var(--ln);padding:7px 12px}
+button.ghost:hover{border-color:var(--ac)}
+input[type=number]{background:var(--bg);color:var(--tx);border:1px solid var(--ln);border-radius:10px;padding:8px 10px;width:110px;font-size:14px}
+.how h2{font-family:Georgia,serif;font-size:18px;margin:0 0 8px}
+.how h3{font-size:15px;margin:14px 0 4px;color:var(--ac)}
+.how p,.how li{font-size:14px;line-height:1.55}
+.how p{margin:6px 0}.how ul{padding-left:18px;margin:6px 0}
+.how table{border-collapse:collapse;width:100%;font-size:14px}
+.how th,.how td{border-bottom:1px solid var(--ln);padding:6px 8px;text-align:center}
+.how th{color:var(--mut);font-weight:600}
+#live{font-family:Georgia,serif;color:var(--ac);font-weight:700;overflow-wrap:anywhere}
+#note{margin:10px 0 0;font-size:14px;color:var(--mut);min-height:20px}
+/* Intensity meter: #mw = wrapper, #mv = percent text, #m = tube, #mf = glowing fill */
+#mw{position:absolute;right:10px;top:12px;bottom:12px;width:46px;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+#mv{font-size:12px;font-weight:700;color:#FF2D95;font-family:Calibri,"Segoe UI",system-ui,sans-serif}
+#m{flex:1;width:20px;position:relative;border:1px solid #262626;border-radius:12px;background:rgba(10,10,10,.6);overflow:hidden}
+#mf{position:absolute;left:0;right:0;bottom:0;height:100%;background:linear-gradient(0deg,#007BA7,#FF2D95);box-shadow:0 0 16px #FF2D95}
+button{transition:.2s}button:hover{box-shadow:0 0 18px var(--ac);transform:translateY(-1px)}
+canvas#g{width:100%;height:150px;display:block}
+.f{font-family:Georgia,serif;font-size:20px;color:var(--ac);font-weight:700}
+</style></head><body>
+<!-- HEADER: title and light/dark toggle button -->
+<div class="top"><h1>Malus’s Law: 3D Simulation</h1><button id="t" class="ghost">Light mode</button></div>
+<p class="sub">Drag the scene to orbit. Turn the analyzer and watch the light on the screen fade as cos²θ.</p>
+<!-- 3D VIEW: three.js draws the scene into #c. Inside it is the intensity meter -->
+<div id="c"><div id="mw"><span id="mv">100%</span><div id="m"><div id="mf"></div></div></div></div>
+<!-- CONTROLS: angle slider, auto-rotate, I0 input, presets, live readouts -->
+<div class="card">
+ <div class="row"><span class="f">I = I₀ cos²θ</span>
+ <input id="s" type="range" min="0" max="180" step="1" value="0" aria-label="Analyzer angle">
+ <button id="b">Auto-rotate</button></div>
+ <!-- Source intensity input (I0) -->
+ <div class="row" style="margin-top:10px"><label for="i0">Source intensity I₀</label><input id="i0" type="number" min="0" step="any" value="100"></div>
+ <!-- PRESET buttons: data-a is the target angle in degrees -->
+ <div class="row" style="margin-top:10px"><button class="ghost" data-a="0">0° parallel</button><button class="ghost" data-a="45">45°</button><button class="ghost" data-a="90">90° crossed</button></div>
+ <p id="note"></p>
+ <!-- Live readouts: angle, cos squared, transmitted intensity -->
+ <div class="stats"><div><b id="th">0°</b><span>angle θ</span></div><div><b id="cs">1.000</b><span>cos²θ</span></div><div><b id="ii">100.0</b><span id="il">I (I₀ = 100)</span></div></div>
+</div>
+<!-- GRAPH: this canvas is drawn by the graph() function in the script -->
+<div class="card"><canvas id="g"></canvas></div>
+<!-- HOW IT WORKS panel: plain text, edit freely -->
+<div class="card how">
+ <h2>How it works</h2>
+ <h3>The law</h3>
+ <p>Light from a lamp is unpolarized: its electric field points in every direction at random. A polarizer lets through only the part of the field along its transmission axis, so the light that comes out is polarized. When that light reaches a second polarizer, the analyzer, turned by an angle θ, only the field component along the analyzer’s axis gets through. That component is E₀ cos θ. Intensity goes as the square of the field, so:</p>
+ <p><span class="f">I = I₀ cos²θ</span></p>
+ <p>Here I₀ is the intensity of the polarized light arriving at the analyzer, and θ is the angle between the two transmission axes.</p>
+ <h3>The setup</h3>
+ <ul>
+  <li><b>Source (white sphere):</b> emits unpolarized light. The white bars jump between random directions.</li>
+  <li><b>Polarizer (cerulean ring):</b> passes one fixed direction only. The cerulean bar shows the polarized field.</li>
+  <li><b>Analyzer (rose ring):</b> rotates by θ. The rose bar shrinks as cos θ, and fewer photons make it through.</li>
+  <li><b>Screen and meter:</b> the screen brightness and the glowing bar show the transmitted intensity as a share of I₀.</li>
+ </ul>
+ <h3>Worked example (I₀ = 100)</h3>
+ <div style="overflow-x:auto"><table>
+  <tr><th>θ</th><th>cos θ</th><th>cos²θ</th><th>I = 100 × cos²θ</th></tr>
+  <tr><td>0°</td><td>1</td><td>1</td><td>100</td></tr>
+  <tr><td>45°</td><td>0.707</td><td>0.5</td><td>50</td></tr>
+  <tr><td>90°</td><td>0</td><td>0</td><td>0 (crossed)</td></tr>
+ </table></div>
+ <p>At 45°, cos 45° ≈ 0.707, and squaring gives 0.5, so I = 100 × 0.5 = 50: half the light passes.</p>
+ <h3>Live calculation</h3>
+ <p id="live">I = 100 × cos²(0°) = 100</p>
+</div>
+<!-- three.js: the 3D library, loaded from cdnjs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// SCRIPT OVERVIEW
+// 1) Scene and camera setup  2) Build objects (polarizer, analyzer, screen, beams, field bars)
+// 3) Effects (glows, stars, grid, photon particles)  4) Controls and state  5) loop() runs every frame
+const el=document.getElementById('c');
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));el.appendChild(R.domElement);
+const sc=new THREE.Scene();sc.background=new THREE.Color(0x0A0A0A);
+const cam=new THREE.PerspectiveCamera(40,1,0.1,100);
+// Camera orbit: az = left/right angle, ev = up/down angle, dist = distance from the target point TG
+let az=0.6,ev=0.3,dist=15;const TG=new THREE.Vector3(3.5,0,0);
+function place(){cam.position.set(TG.x+dist*Math.sin(az)*Math.cos(ev),dist*Math.sin(ev),dist*Math.cos(az)*Math.cos(ev));cam.lookAt(TG);}
+function size(){const w=el.clientWidth,h=el.clientHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();dist=w<500?21:15;place();}
+let drag=null;
+// Drag with mouse or finger to orbit the camera
+el.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];el.setPointerCapture(e.pointerId)});
+el.addEventListener('pointerup',()=>drag=null);
+el.addEventListener('pointermove',e=>{if(!drag)return;az-=(e.clientX-drag[0])*0.008;ev=Math.max(-1.2,Math.min(1.2,ev+(e.clientY-drag[1])*0.008));drag=[e.clientX,e.clientY];place();});
+// Lights
+sc.add(new THREE.AmbientLight(0xffffff,0.7));const pl=new THREE.PointLight(0xffffff,0.8);pl.position.set(3,8,8);sc.add(pl);
+
+// label(): draws text onto a small canvas and shows it as a sprite floating in the scene
+function label(t,x,y){const c=document.createElement('canvas');c.width=256;c.height=64;const g=c.getContext('2d');g.fillStyle='#a3a3a3';g.font='bold 30px Calibri,Arial,sans-serif';g.textAlign='center';g.fillText(t,128,42);
+ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));s.scale.set(2.4,0.6,1);s.position.set(x,y,0);sc.add(s);}
+// polarizer(): builds one filter = translucent disc + ring + parallel slats. Used for both the polarizer and the analyzer
+function polarizer(x,col){const g=new THREE.Group();g.position.x=x;
+ const d=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.5,0.06,48),new THREE.MeshPhongMaterial({color:col,transparent:true,opacity:0.3,side:THREE.DoubleSide}));d.rotation.z=Math.PI/2;g.add(d);
+ const t=new THREE.Mesh(new THREE.TorusGeometry(1.5,0.05,12,48),new THREE.MeshPhongMaterial({color:col}));t.rotation.y=Math.PI/2;g.add(t);
+ for(let k=-4;k<=4;k++){const z=k*0.32,h=2*Math.sqrt(1.5*1.5-z*z);const b=new THREE.Mesh(new THREE.BoxGeometry(0.03,h,0.03),new THREE.MeshBasicMaterial({color:col}));b.position.z=z;g.add(b);}
+ sc.add(g);return g;}
+// Positions along the x axis: source -1, polarizer 2, analyzer 5.5, screen 9
+const P1=polarizer(2,0x007BA7),AN=polarizer(5.5,0xFF2D95);
+label('Source',-1,1.2);label('Polarizer',2,2.2);label('Analyzer',5.5,2.2);label('Screen',9,2.2);
+const src=new THREE.Mesh(new THREE.SphereGeometry(0.4,24,24),new THREE.MeshBasicMaterial({color:0xf2f2f2}));src.position.x=-1;sc.add(src);
+// Screen: its color is set in loop() from cos²θ, so it fades as the analyzer turns
+const scr=new THREE.Mesh(new THREE.PlaneGeometry(3,3),new THREE.MeshBasicMaterial({side:THREE.DoubleSide}));scr.position.x=9;scr.rotation.y=-Math.PI/2;sc.add(scr);
+// beam(): a thin translucent cylinder = the light ray between two x positions. B3 (after the analyzer) fades with intensity
+function beam(x0,x1,col,op,r){const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,1,24),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:op}));m.rotation.z=Math.PI/2;m.scale.y=x1-x0;m.position.x=(x0+x1)/2;sc.add(m);return m;}
+beam(-0.6,1.95,0xffffff,0.3,0.28);beam(2.05,5.45,0x007BA7,0.45,0.28);const B3=beam(5.55,8.95,0xFF2D95,0.5,0.28);
+// ebar(): a thin bar showing the electric field direction. U = unpolarized (random), E1 = after polarizer, E2 = after analyzer
+function ebar(x,col,ang){const m=new THREE.Mesh(new THREE.BoxGeometry(0.06,1,0.06),new THREE.MeshBasicMaterial({color:col}));m.position.x=x;m.rotation.x=ang;sc.add(m);return m;}
+const U=[0,1,2].map(i=>ebar(0.7,0xffffff,i*Math.PI/3));
+const E1=ebar(3.7,0x007BA7,0),E2=ebar(7.2,0xFF2D95,0);
+
+// ---- EFFECTS ----
+// glowTex(): soft white radial gradient used for the glows and particles
+function glowTex(){const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d');const r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(0.3,'rgba(255,255,255,0.35)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);}
+const GT=glowTex();
+function halo(x,col,s){const m=new THREE.Sprite(new THREE.SpriteMaterial({map:GT,color:col,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));m.position.x=x;m.scale.set(s,s,1);sc.add(m);return m;}
+const HS=halo(-1,0xffffff,2.8),HP=halo(2,0x007BA7,3.8),HA=halo(5.5,0xFF2D95,3.8),HX=halo(8.9,0xFF2D95,5.5);
+// Background stars
+const NS=300,sp=new Float32Array(NS*3);for(let i=0;i<NS;i++){sp[i*3]=-8+Math.random()*26;sp[i*3+1]=-6+Math.random()*12;sp[i*3+2]=-8+Math.random()*10;}
+const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.BufferAttribute(sp,3));
+const stars=new THREE.Points(sg,new THREE.PointsMaterial({size:0.09,map:GT,color:0x9fb3c8,transparent:true,opacity:0.6,blending:THREE.AdditiveBlending,depthWrite:false}));sc.add(stars);
+const grid=new THREE.GridHelper(40,40,0x007BA7,0x1c1c1c);grid.position.set(3.5,-2.2,0);grid.material.transparent=true;grid.material.opacity=0.35;sc.add(grid);
+// Photons: NP particles move along x. Color by section: white (source), cerulean (after polarizer), rose (after analyzer)
+const NP=70,pp=new Float32Array(NP*3),pc=new Float32Array(NP*3),pv=new Float32Array(NP);
+const PC=[new THREE.Color(0xffffff),new THREE.Color(0x20b8ee),new THREE.Color(0xFF2D95)];
+function respawn(i,x){const a=Math.random()*6.283,r=Math.sqrt(Math.random())*0.22;pp[i*3]=x;pp[i*3+1]=Math.sin(a)*r;pp[i*3+2]=Math.cos(a)*r;pv[i]=3+Math.random()*2;}
+for(let i=0;i<NP;i++)respawn(i,-1+Math.random()*10);
+const pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.BufferAttribute(pp,3));pg.setAttribute('color',new THREE.BufferAttribute(pc,3));
+sc.add(new THREE.Points(pg,new THREE.PointsMaterial({size:0.3,map:GT,vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false})));
+// photons(): moves every particle. At the analyzer (x = 5.5) a photon survives with probability c = cos²θ, otherwise it restarts at the source
+function photons(dt,c){for(let i=0;i<NP;i++){const x0=pp[i*3];const x=x0+pv[i]*dt;
+ if(x0<5.5&&x>=5.5&&Math.random()>c){respawn(i,-1);continue;}
+ if(x>8.9){respawn(i,-1);continue;}
+ pp[i*3]=x;const cc=PC[x<2?0:x<5.5?1:2];pc[i*3]=cc.r;pc[i*3+1]=cc.g;pc[i*3+2]=cc.b;}
+ pg.attributes.position.needsUpdate=true;pg.attributes.color.needsUpdate=true;}
+// ---- CONTROLS AND STATE ----
+// th = current angle in degrees, auto = auto-rotate on, goal = preset target angle (null = none), I0 = source intensity
+const S=document.getElementById('s'),btn=document.getElementById('b'),G=document.getElementById('g');
+let th=0,auto=false,last=performance.now(),nextU=0,goal=null;
+btn.onclick=()=>{goal=null;auto=!auto;btn.textContent=auto?'Pause':'Auto-rotate'};
+S.oninput=()=>{th=+S.value;goal=null;auto=false;btn.textContent='Auto-rotate'};
+const NOTE=document.getElementById('note'),MF=document.getElementById('mf'),MV=document.getElementById('mv'),T=document.getElementById('t');
+let I0=100;const IL=document.getElementById('il'),IN=document.getElementById('i0'),LIVE=document.getElementById('live');
+// Typing a new I0 changes only the numbers, not the visuals
+IN.oninput=()=>{const v=parseFloat(IN.value);I0=isFinite(v)&&v>=0?v:0;};
+document.querySelectorAll('button[data-a]').forEach(b=>b.onclick=()=>{goal=+b.dataset.a;auto=false;btn.textContent='Auto-rotate'});
+// Light/dark switch: sets data-theme on the html element, and the CSS variables do the rest
+function setTheme(m){document.documentElement.dataset.theme=m;T.textContent=m==='dark'?'Light mode':'Dark mode';}
+setTheme(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
+T.onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+// cv(): reads a CSS variable so the canvas graph follows the theme colors
+const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// graph(): draws the cos² curve from 0 to 180 degrees and a dot at the current angle
+function graph(c){const dp=Math.min(devicePixelRatio,2),w=G.clientWidth,h=G.clientHeight;G.width=w*dp;G.height=h*dp;const g=G.getContext('2d');g.scale(dp,dp);
+ const px=34,py=14,pw=w-px-12,ph=h-py-26;g.strokeStyle=cv('--ln');g.fillStyle=cv('--mut');g.font='11px Calibri,Arial';g.lineWidth=1;
+ [0,0.5,1].forEach(v=>{const y=py+ph*(1-v);g.beginPath();g.moveTo(px,y);g.lineTo(px+pw,y);g.stroke();g.fillText(v.toFixed(1),6,y+4);});
+ [0,45,90,135,180].forEach(a=>g.fillText(a+'°',px+pw*a/180-8,h-8));
+ g.strokeStyle=cv('--ac');g.lineWidth=2.5;g.beginPath();for(let a=0;a<=180;a++){const x=px+pw*a/180,y=py+ph*(1-Math.cos(a*Math.PI/180)**2);a?g.lineTo(x,y):g.moveTo(x,y);}g.stroke();
+ g.fillStyle=cv('--am');g.beginPath();g.arc(px+pw*th/180,py+ph*(1-c),6,0,7);g.fill();}
+// loop(): runs every frame. 1) update the angle  2) rotate analyzer, update screen, beam and field bars
+// 3) update text readouts and meter  4) glows and particles  5) draw graph and 3D scene
+function loop(now){const dt=(now-last)/1000;last=now;if(auto){th=(th+25*dt)%180;S.value=Math.round(th);}else if(goal!==null){th+=(goal-th)*Math.min(1,dt*6);if(Math.abs(goal-th)<0.05){th=goal;goal=null;}S.value=Math.round(th);}
+ // MALUS'S LAW: c = cos²θ is the fraction of light that passes the analyzer
+ const rad=th*Math.PI/180,c=Math.cos(rad)**2,t=now/1000;
+ AN.rotation.x=rad;scr.material.color.setRGB(c*1.0+0.03,c*0.18+0.03,c*0.58+0.03);B3.material.opacity=0.05+0.5*c;
+ E1.scale.y=1;E2.rotation.x=rad;E2.scale.y=Math.abs(Math.cos(rad))+0.001;if(now>nextU){U.forEach(u=>{u.rotation.x=Math.random()*Math.PI;u.scale.y=0.4+0.6*Math.random();});nextU=now+120;}
+ document.getElementById('th').textContent=Math.round(th)+'°';document.getElementById('cs').textContent=c.toFixed(3);document.getElementById('ii').textContent=(c*I0).toFixed(1);IL.textContent='I (I₀ = '+I0+')';LIVE.textContent='I = '+I0+' × cos²('+Math.round(th)+'°) = '+I0+' × '+c.toFixed(3)+' = '+(c*I0).toFixed(1);
+ HS.material.opacity=0.6+0.3*Math.sin(t*3);HP.material.opacity=0.45+0.1*Math.sin(t*2);HA.material.opacity=0.4+0.15*Math.sin(t*2+1);HX.material.opacity=0.08+0.7*c;stars.rotation.y=t*0.01;
+ const ai=Math.round(th)%180;NOTE.textContent=ai===0?'Parallel axes: all the light passes through.':ai===90?'Crossed polarizers: no light passes.':ai===45?'Halfway: exactly half the intensity gets through (cos²45° = 0.5).':c>0.5?'Mostly aligned: most of the light still passes.':'Mostly crossed: only a little light leaks through.';MF.style.height=(c*100)+'%';MV.textContent=Math.round(c*100)+'%';
+ photons(Math.min(dt,0.05),c);graph(c);R.render(sc,cam);requestAnimationFrame(loop);}
+addEventListener('resize',size);size();requestAnimationFrame(loop);
+</script></body></html>
